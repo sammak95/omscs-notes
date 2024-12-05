@@ -574,6 +574,51 @@ Similarly, in sequence `S3`, cache `1` attempts to acquire the lock and transfer
 Therefore, while cache `0` owns the lock, the other two caches do not correspondingly generate superfluous bus traffic during this time; effectively, cache `0` has exclusive access over the coherence bus during this time, thereby allowing it to service cache misses much more quickly and efficiently. Furthermore, cache hits on cache `0` are also correspondingly much more efficient compared to coherence bus accesses accordingly.
 
 The system proceeds in this manner until cache `0` ultimately releases the lock, at which point there is a consequent invalidation and subsequent read by the other two cores in the system (which now compete for the lock). However, now, these "activity bursts" are confined strictly to these (relatively brief) "lock exchange" periods only. Otherwise, during periods when the lock is "busy," the other caches simply persistently use "normal" loads in the meantime, which is correspondingly much more energy-efficient.
+___
+***Elaboration***
+Sure! Let’s break this down into simpler terms, step by step.
+
+#### Background:
+In the previous example, when a core is trying to acquire a lock, it repeatedly performs an **atomic operation** (`EXCH`) to check and set the lock. This process is **inefficient** because it causes **constant communication** between the cores, even while the core is waiting for the lock. This leads to **wasted power** and **slower performance**.
+
+#### The Problem with the Original Version:
+In the **original version**, the core keeps doing the atomic exchange (`EXCH`) repeatedly in a loop while it waits for the lock. During this time:
+- The core constantly checks the lock by performing atomic operations.
+- Each time it checks, the system generates **cache misses** and **bus traffic** (communication between cores), which consumes a lot of power and slows down the system.
+
+#### The Improved Version (Test-and-Atomic-Op):
+The improved version uses a **test-and-atomic-op approach** to make things more efficient. Here's how it works:
+
+1. **Check the lock first (normal load)**: Instead of constantly using the atomic operation, the core first checks the lock using a regular **load** operation. This is not atomic—it’s a simple read to see if the lock is free (if `lock_var == 0`).
+   
+   - If the lock is still held (i.e., `lock_var == 1`), the core just **waits** by repeatedly checking the lock using normal loads. This doesn’t generate as much **traffic** or **power usage** because it's just reading the value without making changes.
+   
+2. **Acquire the lock (atomic exchange)**: Once the core sees that the lock is free (i.e., `lock_var == 0`), it performs the **atomic exchange (`EXCH`)** to acquire the lock.
+
+#### Why This is More Efficient:
+1. **Reduced Traffic**: In the original version, each atomic exchange (`EXCH`) causes communication between the cores and the shared bus. In the improved version, the core only checks the lock using normal loads, which don’t cause communication unless the lock is available.
+   
+2. **Efficient Use of Caches**: While waiting for the lock, the other cores simply **read the lock’s status** using normal loads. This means they can use **cached copies** of the lock data, rather than repeatedly accessing the shared bus. This makes things faster and uses less power.
+
+3. **Better Performance**: With the improved version, the system spends less time generating unnecessary communication between the cores. The only time the cores generate traffic is when the lock is actually acquired or released. During most of the time, the cores are just waiting quietly with minimal power usage.
+
+#### Key Idea:
+- **Before acquiring the lock**: Cores just check the lock using normal reads (no atomic operations).
+- **When the lock is available**: The core uses an atomic operation (`EXCH`) to acquire it.
+
+This reduces the **wasted power** from unnecessary atomic operations and **speed up** the system since there’s less communication happening when the cores are waiting for the lock.
+
+#### How the System Works:
+1. **Cache 0** acquires the lock and keeps it in its cache. The other caches (Cache 1 and Cache 2) are **inactive** and don’t need to communicate much with the bus while waiting.
+   
+2. **Cache 1** and **Cache 2** also check the lock with normal loads, and if it’s still locked, they don’t cause unnecessary traffic. When the lock becomes available, they try to acquire it using the atomic operation.
+
+3. **Efficient Lock Release**: When Cache 0 releases the lock, the other caches will **invalidate their cached copies** and then **compete for the lock** using the atomic operation.
+
+#### Conclusion:
+The improved version reduces unnecessary **bus traffic** and **power consumption** by allowing cores to simply check the lock with normal loads while they wait, only using atomic operations when necessary. This leads to more **efficient performance** with less wasted energy.
+
+---
 
 ### 16. Test-and-Atomic-Op Quiz and Answers
 
